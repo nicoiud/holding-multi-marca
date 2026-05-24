@@ -1,0 +1,232 @@
+{
+  "name": "03 - Memoria: Guardar",
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [{ "name": "memoria" }],
+  "nodes": [
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000001",
+      "name": "Webhook Guardar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "memoria-guardar",
+      "parameters": {
+        "path": "memoria-guardar",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000002",
+      "name": "Preparar Datos",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "content",
+              "value": "={{ $json.body.content }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "category",
+              "value": "={{ $json.body.category || 'dato' }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "session_id",
+              "value": "={{ $json.body.session_id || 'global' }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "point_id",
+              "value": "={{ Math.floor(Math.random() * 1000000000) }}",
+              "type": "number"
+            },
+            {
+              "id": "5",
+              "name": "timestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000003",
+      "name": "Generar Embedding (nomic)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'nomic-embed-text', prompt: $json.content }) }}",
+        "options": {
+          "response": {
+            "response": { "responseFormat": "json" }
+          }
+        }
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000004",
+      "name": "Merge para Qdrant",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "embedding",
+              "value": "={{ $json.embedding }}",
+              "type": "array"
+            },
+            {
+              "id": "2",
+              "name": "content",
+              "value": "={{ $('Preparar Datos').item.json.content }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "category",
+              "value": "={{ $('Preparar Datos').item.json.category }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "session_id",
+              "value": "={{ $('Preparar Datos').item.json.session_id }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "point_id",
+              "value": "={{ $('Preparar Datos').item.json.point_id }}",
+              "type": "number"
+            },
+            {
+              "id": "6",
+              "name": "timestamp",
+              "value": "={{ $('Preparar Datos').item.json.timestamp }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000005",
+      "name": "Upsert en Qdrant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 300],
+      "parameters": {
+        "method": "PUT",
+        "url": "http://host.docker.internal:6333/collections/agent_memory/points",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  points: [{\n    id: $json.point_id,\n    vector: $json.embedding,\n    payload: {\n      content: $json.content,\n      category: $json.category,\n      session_id: $json.session_id,\n      timestamp: $json.timestamp\n    }\n  }]\n}) }}",
+        "options": {
+          "response": {
+            "response": { "responseFormat": "json" }
+          }
+        }
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000006",
+      "name": "Guardar Log en Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1100, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO memory_log (point_id, session_id, category, content, created_at)\nVALUES (\n  '{{ $json.point_id }}',\n  '{{ $('Preparar Datos').item.json.session_id }}',\n  '{{ $('Preparar Datos').item.json.category }}',\n  '{{ $('Preparar Datos').item.json.content.replace(/'/g, \"''\") }}',\n  NOW()\n)\nON CONFLICT (point_id) DO UPDATE SET\n  content = EXCLUDED.content,\n  updated_at = NOW();",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_CON_ID_CREDENCIAL_POSTGRES",
+          "name": "PostgreSQL Local"
+        }
+      }
+    },
+    {
+      "id": "c3d4e5f6-0003-0003-0003-000000000007",
+      "name": "Responder OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1320, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  success: true,\n  point_id: $('Preparar Datos').item.json.point_id,\n  message: 'Guardado en memoria correctamente',\n  category: $('Preparar Datos').item.json.category\n}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Guardar": {
+      "main": [
+        [{ "node": "Preparar Datos", "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Datos": {
+      "main": [
+        [{ "node": "Generar Embedding (nomic)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Generar Embedding (nomic)": {
+      "main": [
+        [{ "node": "Merge para Qdrant", "type": "main", "index": 0 }]
+      ]
+    },
+    "Merge para Qdrant": {
+      "main": [
+        [{ "node": "Upsert en Qdrant", "type": "main", "index": 0 }]
+      ]
+    },
+    "Upsert en Qdrant": {
+      "main": [
+        [{ "node": "Guardar Log en Postgres", "type": "main", "index": 0 }]
+      ]
+    },
+    "Guardar Log en Postgres": {
+      "main": [
+        [{ "node": "Responder OK", "type": "main", "index": 0 }]
+      ]
+    }
+  }
+}
