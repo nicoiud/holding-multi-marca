@@ -1,17 +1,20 @@
 # n8n — Filtro de Noticias Tech/IA con Gemma
 
-Workflow de n8n que recopila noticias de tecnología e inteligencia artificial desde múltiples fuentes RSS, las analiza con un agente Gemma y descarta las que son clickbait, fake news o contenido sin valor real.
+Workflow de n8n que recopila noticias de tecnología e inteligencia artificial desde múltiples fuentes RSS, las analiza con un agente Gemma, verifica su confiabilidad y las clasifica en categorías separadas antes de entregarlas.
 
 ## Qué hace
 
 1. **Recopila** noticias de fuentes RSS de tech/IA cada X minutos
 2. **Analiza** cada noticia con Gemma (via Ollama o Google AI Studio)
-3. **Filtra** automáticamente:
-   - Fake news y desinformación
-   - Clickbait y títulos sensacionalistas sin sustancia
-   - Noticias repetidas o sin información nueva
-   - Contenido de relleno / AI slop
-4. **Entrega** solo las noticias con valor real, con un resumen y score de calidad
+3. **Evalúa confiabilidad**:
+   - Verifica si la fuente es reconocida y tiene historial confiable
+   - Detecta fake news, desinformación y especulación presentada como hecho
+   - Penaliza noticias sin fuente primaria citada
+   - Descarta clickbait y contenido de relleno / AI slop
+4. **Clasifica** las noticias válidas en categorías separadas:
+   - `IA` — modelos, investigación, papers, lanzamientos de AI
+   - `Tech` — hardware, software, industria, empresas, ciberseguridad
+5. **Entrega** cada categoría por su propio canal de salida, con resumen y score
 
 ## Stack
 
@@ -24,12 +27,21 @@ Workflow de n8n que recopila noticias de tecnología e inteligencia artificial d
 
 ## Fuentes RSS incluidas
 
-- `https://techcrunch.com/feed/`
-- `https://www.theverge.com/rss/index.xml`
-- `https://feeds.arstechnica.com/arstechnica/technology-lab`
-- `https://hnrss.org/frontpage`
+**IA (alta confiabilidad)**
 - `https://www.artificialintelligence-news.com/feed/`
 - `https://venturebeat.com/category/ai/feed/`
+- `https://bair.berkeley.edu/blog/feed.xml` — investigación académica
+- `https://openai.com/blog/rss/` — anuncios oficiales OpenAI
+- `https://deepmind.google/blog/rss/` — anuncios oficiales DeepMind
+
+**Tech general (alta confiabilidad)**
+- `https://feeds.arstechnica.com/arstechnica/technology-lab`
+- `https://hnrss.org/frontpage` — Hacker News
+- `https://www.wired.com/feed/rss`
+
+**Tech general (confiabilidad media — pasan por filtro estricto)**
+- `https://techcrunch.com/feed/`
+- `https://www.theverge.com/rss/index.xml`
 
 ## Estructura del workflow
 
@@ -40,30 +52,61 @@ Workflow de n8n que recopila noticias de tecnología e inteligencia artificial d
        ↓
 [Merge & Deduplicate]
        ↓
-[Gemma Agent — Análisis]
+[Gemma Agent — Análisis de confiabilidad + clasificación]
        ↓
-[IF: score >= umbral]
-  ├── ✅ Noticia válida → [Formateador] → [Salida (Telegram/Slack/etc)]
-  └── ❌ Descartada → [Log opcional]
+[IF: confiable == true AND score >= umbral]
+  ├── ❌ No confiable / baja calidad → [Log descartados]
+  └── ✅ Confiable → [Switch por categoría]
+                          ├── 🤖 IA   → [Formateador IA]   → [Canal IA]
+                          └── 💻 Tech → [Formateador Tech] → [Canal Tech]
 ```
 
-## Criterios de filtrado del agente
+## Criterios de filtrado y clasificación del agente
 
-El agente Gemma evalúa cada noticia con este prompt base:
+El agente Gemma evalúa cada noticia y devuelve un JSON estructurado:
+
+```json
+{
+  "confiable": true,
+  "score": 8,
+  "categoria": "IA",
+  "motivo_descarte": null,
+  "resumen": "..."
+}
+```
+
+### Prompt base del agente
 
 ```
-Eres un editor experto en tecnología e IA. Analiza este artículo y devuelve un JSON con:
-- score: número del 1 al 10 (10 = muy valioso, 1 = basura total)
-- motivo: por qué lo calificaste así (1 línea)
-- resumen: 2-3 oraciones del contenido real si vale la pena
+Eres un editor experto en tecnología e IA. Analiza este artículo y responde SOLO con JSON:
 
-Descarta con score <= 4 si:
-- Es clickbait sin sustancia ("Todo cambiará para siempre")
-- Es fake news o especulación presentada como hecho
-- Es contenido repetido de otro artículo
-- Es publicidad disfrazada de noticia
+{
+  "confiable": boolean,       // true si la noticia es verificable y de fuente primaria
+  "score": number,            // 1-10: calidad e importancia del contenido
+  "categoria": "IA" | "Tech", // IA = modelos/investigación/papers; Tech = todo lo demás
+  "motivo_descarte": string | null, // razón si confiable=false o score<=4
+  "resumen": string | null    // 2-3 oraciones solo si vale la pena publicar
+}
+
+Marca confiable=false si:
+- No cita fuente primaria ni enlace oficial
+- Usa lenguaje alarmista sin datos concretos ("podría destruir", "el fin de X")
+- Contradice información verificada sin evidencia
+- Es especulación presentada como hecho confirmado
+
+Baja el score por debajo de 5 si:
+- Es clickbait sin sustancia real
+- Es contenido repetido sin novedad
+- Es publicidad o PR disfrazado de noticia
 - No aporta información nueva o accionable
 ```
+
+### Reglas de categorización
+
+| Categoría | Incluye |
+|---|---|
+| `IA` | Nuevos modelos, benchmarks, papers, research labs, herramientas de AI, AGI/ASI |
+| `Tech` | Hardware, software, empresas, ciberseguridad, regulación, startups, cloud |
 
 ## Setup rápido
 
@@ -108,6 +151,9 @@ docker run -d \
 | `SCORE_MINIMO` | Puntaje mínimo para publicar | `6` |
 | `INTERVALO_MINUTOS` | Frecuencia de recopilación | `30` |
 | `MAX_NOTICIAS_POR_CICLO` | Límite de noticias a procesar por vuelta | `20` |
+| `CANAL_IA` | Webhook/chat ID para noticias de IA | — |
+| `CANAL_TECH` | Webhook/chat ID para noticias de Tech | — |
+| `CANAL_DESCARTADAS` | Webhook/chat ID para log de descartadas (opcional) | — |
 
 ## Archivos
 
