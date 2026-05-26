@@ -1,69 +1,138 @@
 # n8n — Filtro de Noticias Tech/IA con Gemma
 
-Workflow de n8n que recopila noticias de tecnología e inteligencia artificial desde múltiples fuentes RSS, las analiza con un agente Gemma, verifica su confiabilidad y las clasifica en categorías separadas antes de entregarlas.
+Workflow de n8n que recopila noticias de tecnología e inteligencia artificial desde múltiples fuentes RSS, las analiza con un agente Gemma, verifica su confiabilidad, genera un análisis de importancia y las publica simultáneamente en Telegram y en una web propia.
 
 ## Qué hace
 
-1. **Recopila** noticias de fuentes RSS de tech/IA cada X minutos
-2. **Analiza** cada noticia con Gemma (via Ollama o Google AI Studio)
-3. **Evalúa confiabilidad**:
-   - Verifica si la fuente es reconocida y tiene historial confiable
-   - Detecta fake news, desinformación y especulación presentada como hecho
-   - Penaliza noticias sin fuente primaria citada
-   - Descarta clickbait y contenido de relleno / AI slop
-4. **Clasifica** las noticias válidas en categorías separadas:
+1. **Recopila** noticias de fuentes RSS de tech/IA cada 30 minutos
+2. **Analiza** cada noticia con Gemma — genera resumen, evalúa confiabilidad y produce un análisis editorial
+3. **Filtra** noticias no confiables, fake news y clickbait
+4. **Clasifica** en dos categorías con canales separados:
    - `IA` — modelos, investigación, papers, lanzamientos de AI
    - `Tech` — hardware, software, industria, empresas, ciberseguridad
-5. **Entrega** cada categoría por su propio canal de salida, con resumen y score
+5. **Publica** cada noticia aprobada en:
+   - **Telegram** (canal IA o canal Tech según categoría)
+   - **Web** (sitio estático servido por la API)
+6. Cada noticia incluye un **análisis editorial**: si es importante, por qué, y a quién afecta
 
 ## Stack
 
 | Componente | Tecnología |
 |---|---|
-| Orquestador | n8n (self-hosted o cloud) |
-| Modelo LLM | Gemma 3 (via Ollama local o Google AI Studio) |
-| Fuentes | RSS feeds (TechCrunch, The Verge, Ars Technica, Hacker News, etc.) |
-| Salida | Telegram / Slack / Email / Webhook |
+| Orquestador | n8n (self-hosted, Docker) |
+| Modelo LLM | Gemma 3 via Ollama (local) o Google AI Studio |
+| Fuentes | RSS feeds (Ars Technica, HN, VentureBeat, OpenAI, DeepMind, etc.) |
+| Salida A | Telegram (2 canales: IA y Tech) |
+| Salida B | Web (Express + HTML/CSS, datos en `news.json`) |
 
-## Fuentes RSS incluidas
+## Fuentes RSS
 
-**IA (alta confiabilidad)**
+**IA — alta confiabilidad**
 - `https://www.artificialintelligence-news.com/feed/`
 - `https://venturebeat.com/category/ai/feed/`
-- `https://bair.berkeley.edu/blog/feed.xml` — investigación académica
-- `https://openai.com/blog/rss/` — anuncios oficiales OpenAI
-- `https://deepmind.google/blog/rss/` — anuncios oficiales DeepMind
+- `https://bair.berkeley.edu/blog/feed.xml`
+- `https://openai.com/blog/rss/`
+- `https://deepmind.google/blog/rss/`
 
-**Tech general (alta confiabilidad)**
+**Tech — alta confiabilidad**
 - `https://feeds.arstechnica.com/arstechnica/technology-lab`
-- `https://hnrss.org/frontpage` — Hacker News
+- `https://hnrss.org/frontpage`
 - `https://www.wired.com/feed/rss`
 
-**Tech general (confiabilidad media — pasan por filtro estricto)**
+**Tech — confiabilidad media (filtro estricto)**
 - `https://techcrunch.com/feed/`
 - `https://www.theverge.com/rss/index.xml`
 
 ## Estructura del workflow
 
 ```
-[Schedule Trigger]
+[Schedule Trigger: cada 30 min]
        ↓
-[RSS Feed Reader] × N fuentes
+[RSS Feed Reader] × 10 fuentes  ←→  paralelo
        ↓
-[Merge & Deduplicate]
+[Merge + Deduplicate por URL]
        ↓
-[Gemma Agent — Análisis de confiabilidad + clasificación]
+[Gemma Agent — análisis completo]
+  → confiable, score, categoria, resumen, analisis_editorial
        ↓
-[IF: confiable == true AND score >= umbral]
-  ├── ❌ No confiable / baja calidad → [Log descartados]
-  └── ✅ Confiable → [Switch por categoría]
-                          ├── 🤖 IA   → [Formateador IA]   → [Canal IA]
-                          └── 💻 Tech → [Formateador Tech] → [Canal Tech]
+[IF: confiable=true AND score >= 6]
+  ├── ❌ Descartada → [Log JSON]
+  └── ✅ Aprobada → [Switch por categoría]
+                        ├── 🤖 IA
+                        │     ├── [Telegram: Canal IA]
+                        │     └── [POST /api/news  →  Web]
+                        └── 💻 Tech
+                              ├── [Telegram: Canal Tech]
+                              └── [POST /api/news  →  Web]
 ```
 
-## Criterios de filtrado y clasificación del agente
+## Análisis editorial por noticia
 
-El agente Gemma evalúa cada noticia y devuelve un JSON estructurado:
+Cada noticia aprobada incluye un bloque generado por Gemma:
+
+```
+⚡ IMPORTANTE — Score 9/10
+Por qué importa: Google acaba de lanzar Gemma 3 con capacidad multimodal
+nativa, superando benchmarks de GPT-4o en tareas de razonamiento. Esto
+democratiza modelos de alta calidad para uso local sin costo.
+Impacto: desarrolladores independientes, empresas con restricciones de
+privacidad, investigadores sin acceso a GPU cloud.
+```
+
+Este análisis aparece:
+- Al final del mensaje de **Telegram**
+- En la card de la **web**, desplegable bajo el resumen
+
+## Formato de mensaje Telegram
+
+```
+🤖 [IA] Título de la noticia
+
+📰 Fuente: VentureBeat  |  🕐 hace 12 min
+⭐ Score: 9/10  ✅ Verificada
+
+📋 Resumen:
+Dos o tres oraciones del contenido real...
+
+🔍 Análisis:
+⚡ IMPORTANTE — Por qué importa: ...
+Impacto: ...
+
+🔗 Leer más: https://...
+```
+
+## Web (`/web`)
+
+SPA minimalista con dos tabs (IA / Tech), cards por noticia y panel de análisis desplegable.
+
+```
+web/
+├── index.html      ← estructura + tabs IA / Tech
+├── style.css       ← diseño dark, tipografía limpia
+└── app.js          ← fetch /api/news, renderizado dinámico
+```
+
+## API (`/api`)
+
+Servidor Express liviano que recibe noticias de n8n y las sirve al frontend.
+
+```
+api/
+├── server.js       ← Express: POST /api/news, GET /api/news
+└── news.json       ← persistencia local (generado automáticamente)
+```
+
+### Endpoints
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `POST` | `/api/news` | n8n publica una noticia nueva |
+| `GET` | `/api/news` | Frontend obtiene todas las noticias |
+| `GET` | `/api/news?categoria=IA` | Filtrar por categoría |
+
+## Criterios del agente Gemma
+
+El agente devuelve JSON estricto:
 
 ```json
 {
@@ -71,94 +140,95 @@ El agente Gemma evalúa cada noticia y devuelve un JSON estructurado:
   "score": 8,
   "categoria": "IA",
   "motivo_descarte": null,
-  "resumen": "..."
+  "resumen": "Dos o tres oraciones del contenido real.",
+  "analisis": {
+    "importante": true,
+    "nivel": "alto",
+    "por_que": "Explicación de por qué importa esta noticia.",
+    "impacto": "A quién afecta y cómo."
+  }
 }
 ```
 
-### Prompt base del agente
+### Prompt base
 
 ```
-Eres un editor experto en tecnología e IA. Analiza este artículo y responde SOLO con JSON:
+Eres un editor experto en tecnología e IA con criterio periodístico estricto.
+Analiza el siguiente artículo y responde ÚNICAMENTE con el JSON indicado.
 
-{
-  "confiable": boolean,       // true si la noticia es verificable y de fuente primaria
-  "score": number,            // 1-10: calidad e importancia del contenido
-  "categoria": "IA" | "Tech", // IA = modelos/investigación/papers; Tech = todo lo demás
-  "motivo_descarte": string | null, // razón si confiable=false o score<=4
-  "resumen": string | null    // 2-3 oraciones solo si vale la pena publicar
-}
-
-Marca confiable=false si:
+Reglas de confiabilidad (confiable=false si alguna aplica):
 - No cita fuente primaria ni enlace oficial
-- Usa lenguaje alarmista sin datos concretos ("podría destruir", "el fin de X")
+- Usa lenguaje alarmista sin datos concretos
 - Contradice información verificada sin evidencia
 - Es especulación presentada como hecho confirmado
 
-Baja el score por debajo de 5 si:
-- Es clickbait sin sustancia real
-- Es contenido repetido sin novedad
-- Es publicidad o PR disfrazado de noticia
-- No aporta información nueva o accionable
+Score < 5 si:
+- Clickbait sin sustancia
+- Contenido repetido sin novedad
+- Publicidad/PR disfrazado de noticia
+- No aporta información nueva ni accionable
+
+Categorización:
+- "IA": modelos, benchmarks, papers, research labs, herramientas AI, AGI
+- "Tech": hardware, software, empresas, ciberseguridad, regulación, cloud
+
+Análisis editorial:
+- "importante": true si el score >= 7
+- "nivel": "alto" | "medio" | "bajo"
+- "por_que": por qué esta noticia importa (1-2 oraciones directas)
+- "impacto": a quién afecta y de qué forma (1 oración)
 ```
 
-### Reglas de categorización
-
-| Categoría | Incluye |
-|---|---|
-| `IA` | Nuevos modelos, benchmarks, papers, research labs, herramientas de AI, AGI/ASI |
-| `Tech` | Hardware, software, empresas, ciberseguridad, regulación, startups, cloud |
-
-## Setup rápido
+## Setup
 
 ### Prerrequisitos
 
-- n8n instalado (Docker recomendado)
+- n8n ya instalado y corriendo
 - Ollama con Gemma corriendo localmente **o** API key de Google AI Studio
+- Node.js para correr la API web
 
-### Con Ollama (local, gratis)
+### 1. Levantar la API web
 
 ```bash
-# Instalar modelo
-ollama pull gemma3
-
-# Correr n8n con acceso a Ollama
-docker run -d \
-  --name n8n \
-  -p 5678:5678 \
-  -v n8n_data:/home/node/.n8n \
-  --add-host=host.docker.internal:host-gateway \
-  n8nio/n8n
+cd api
+npm install
+node server.js
+# corre en http://localhost:3000
 ```
 
-### Con Google AI Studio (cloud)
+### 2. Variables de entorno para n8n
 
-1. Obtener API key en [aistudio.google.com](https://aistudio.google.com)
-2. Configurar la credencial `Google Gemini API` en n8n
-3. Usar el nodo `Google Gemini Chat Model` en el workflow
+En n8n → **Settings → Variables**, agregar:
 
-## Importar el workflow
+| Variable | Valor |
+|---|---|
+| `OLLAMA_URL` | `http://localhost:11434` |
+| `GEMMA_MODEL` | `gemma3` |
+| `TELEGRAM_CANAL_IA` | chat ID del canal IA |
+| `TELEGRAM_CANAL_TECH` | chat ID del canal Tech |
+| `SCORE_MINIMO` | `6` |
+| `MAX_NOTICIAS_POR_CICLO` | `20` |
+| `API_SECRET` | clave para proteger la API |
 
-1. Abrir n8n → **Workflows** → **Import from file**
-2. Seleccionar `workflow.json` de este repositorio
-3. Configurar las credenciales del modelo
-4. Configurar el nodo de salida (Telegram bot, Slack webhook, etc.)
-5. Activar el workflow
+### 3. Importar el workflow en n8n
 
-## Variables de configuración
-
-| Variable | Descripción | Default |
-|---|---|---|
-| `SCORE_MINIMO` | Puntaje mínimo para publicar | `6` |
-| `INTERVALO_MINUTOS` | Frecuencia de recopilación | `30` |
-| `MAX_NOTICIAS_POR_CICLO` | Límite de noticias a procesar por vuelta | `20` |
-| `CANAL_IA` | Webhook/chat ID para noticias de IA | — |
-| `CANAL_TECH` | Webhook/chat ID para noticias de Tech | — |
-| `CANAL_DESCARTADAS` | Webhook/chat ID para log de descartadas (opcional) | — |
+1. n8n → **Workflows → Import from file**
+2. Seleccionar `workflow.json`
+3. Configurar credenciales: **Telegram Bot** + Ollama (HTTP Request ya apunta a `localhost:11434`)
+4. Activar el workflow
 
 ## Archivos
 
 ```
 .
-├── README.md           ← este archivo
-└── workflow.json       ← workflow exportado de n8n (próximamente)
+├── README.md
+├── workflow.json          ← importar en n8n
+├── api/
+│   ├── server.js          ← Express API (POST/GET /api/news)
+│   ├── package.json
+│   └── news.json          ← generado automáticamente
+└── web/
+    ├── index.html
+    ├── style.css
+    └── app.js
 ```

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tech & IA News</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Tech &amp; IA News</h1>
+      <p class="subtitle">Filtrado y analizado por Gemma</p>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-cat="all">Todas</button>
+    <button class="tab" data-cat="IA">🤖 IA</button>
+    <button class="tab" data-cat="Tech">💻 Tech</button>
+  </nav>
+
+  <main>
+    <div id="stats" class="stats"></div>
+    <div id="feed" class="feed"></div>
+    <div id="empty" class="empty hidden">No hay noticias en esta categoría todavía.</div>
+    <div id="loading" class="loading">Cargando noticias...</div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

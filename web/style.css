@@ -1,0 +1,233 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #232636;
+  --border: #2e3245;
+  --accent-ia: #6c63ff;
+  --accent-tech: #00c9a7;
+  --accent-high: #ff6b6b;
+  --accent-mid: #ffd93d;
+  --text: #e2e8f0;
+  --text-muted: #8892a4;
+  --radius: 12px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 24px 20px;
+}
+
+.header-inner {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  max-width: 860px;
+  margin: 20px auto 0;
+  padding: 0 20px;
+}
+
+.tab {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 6px 18px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab:hover { border-color: var(--accent-ia); color: var(--text); }
+
+.tab.active {
+  background: var(--accent-ia);
+  border-color: var(--accent-ia);
+  color: #fff;
+  font-weight: 600;
+}
+
+.tab[data-cat="Tech"].active {
+  background: var(--accent-tech);
+  border-color: var(--accent-tech);
+}
+
+main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.stat-chip strong { color: var(--text); }
+
+.feed { display: flex; flex-direction: column; gap: 14px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  transition: border-color 0.15s;
+}
+
+.card:hover { border-color: #3d4262; }
+
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.cat-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.cat-badge.IA   { background: rgba(108,99,255,0.2); color: var(--accent-ia); }
+.cat-badge.Tech { background: rgba(0,201,167,0.15); color: var(--accent-tech); }
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.card-title a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card-title a:hover { color: var(--accent-ia); }
+
+.card-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.score-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.score-high { background: var(--accent-tech); }
+.score-mid  { background: var(--accent-mid); }
+.score-low  { background: var(--text-muted); }
+
+.resumen {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.analisis-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+  text-align: left;
+}
+
+.analisis-toggle:hover {
+  border-color: var(--accent-ia);
+  color: var(--text);
+}
+
+.analisis-panel {
+  margin-top: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  display: none;
+}
+
+.analisis-panel.open { display: block; }
+
+.nivel-alto  { color: var(--accent-high); font-weight: 700; }
+.nivel-medio { color: var(--accent-mid);  font-weight: 700; }
+.nivel-bajo  { color: var(--text-muted);  font-weight: 700; }
+
+.analisis-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+
+.hidden { display: none; }
+
+.empty, .loading {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 60px 20px;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 600px) {
+  .card { padding: 14px; }
+  h1 { font-size: 1.3rem; }
+}

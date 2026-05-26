@@ -1,0 +1,355 @@
+{
+  "name": "Tech & IA News Filter",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 30 }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://www.artificialintelligence-news.com/feed/",
+        "options": {}
+      },
+      "id": "rss-ai-news",
+      "name": "RSS: AI News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 100]
+    },
+    {
+      "parameters": {
+        "url": "https://venturebeat.com/category/ai/feed/",
+        "options": {}
+      },
+      "id": "rss-venturebeat",
+      "name": "RSS: VentureBeat AI",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 220]
+    },
+    {
+      "parameters": {
+        "url": "https://openai.com/blog/rss/",
+        "options": {}
+      },
+      "id": "rss-openai",
+      "name": "RSS: OpenAI Blog",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 340]
+    },
+    {
+      "parameters": {
+        "url": "https://feeds.arstechnica.com/arstechnica/technology-lab",
+        "options": {}
+      },
+      "id": "rss-arstechnica",
+      "name": "RSS: Ars Technica",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 460]
+    },
+    {
+      "parameters": {
+        "url": "https://hnrss.org/frontpage",
+        "options": {}
+      },
+      "id": "rss-hn",
+      "name": "RSS: Hacker News",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 580]
+    },
+    {
+      "parameters": {
+        "url": "https://techcrunch.com/feed/",
+        "options": {}
+      },
+      "id": "rss-techcrunch",
+      "name": "RSS: TechCrunch",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 700]
+    },
+    {
+      "parameters": {
+        "url": "https://www.theverge.com/rss/index.xml",
+        "options": {}
+      },
+      "id": "rss-verge",
+      "name": "RSS: The Verge",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [240, 820]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "clashHandling": { "values": { "resolveClash": "addSuffix" } }
+      },
+      "id": "merge-feeds",
+      "name": "Merge All Feeds",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [500, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "const seen = new Set();\nconst items = [];\nconst MAX = parseInt(process.env.MAX_NOTICIAS_POR_CICLO || '20');\n\nfor (const item of $input.all()) {\n  const url = item.json.link || item.json.url || '';\n  if (!url || seen.has(url)) continue;\n  seen.add(url);\n  items.push({ json: { titulo: item.json.title || '', url, fuente: item.json.creator || new URL(url).hostname, contenido: item.json.contentSnippet || item.json.summary || '' } });\n  if (items.length >= MAX) break;\n}\n\nreturn items;"
+      },
+      "id": "deduplicate",
+      "name": "Deduplicate & Limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.OLLAMA_URL }}/api/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "={{ $env.GEMMA_MODEL || 'gemma3' }}"
+            },
+            {
+              "name": "prompt",
+              "value": "=Eres un editor experto en tecnología e IA con criterio periodístico estricto.\nAnaliza el siguiente artículo y responde ÚNICAMENTE con JSON válido, sin texto adicional.\n\nTítulo: {{ $json.titulo }}\nFuente: {{ $json.fuente }}\nContenido: {{ $json.contenido }}\nURL: {{ $json.url }}\n\nResponde con este JSON exacto:\n{\n  \"confiable\": boolean,\n  \"score\": number,\n  \"categoria\": \"IA\" | \"Tech\",\n  \"motivo_descarte\": string | null,\n  \"resumen\": string | null,\n  \"analisis\": {\n    \"importante\": boolean,\n    \"nivel\": \"alto\" | \"medio\" | \"bajo\",\n    \"por_que\": string,\n    \"impacto\": string\n  } | null\n}\n\nReglas:\n- confiable=false si: no cita fuente primaria, lenguaje alarmista sin datos, especulación como hecho confirmado\n- score < 5 si: clickbait, contenido repetido, publicidad disfrazada, sin información nueva\n- categoria 'IA': modelos, papers, benchmarks, research labs, herramientas AI, AGI\n- categoria 'Tech': hardware, software, empresas, ciberseguridad, regulación, cloud\n- analisis solo si confiable=true y score >= 6\n- nivel 'alto' si score >= 8 y el evento es significativo en la industria"
+            },
+            {
+              "name": "stream",
+              "value": false
+            }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "id": "gemma-analyze",
+      "name": "Gemma: Analizar Noticia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [940, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst raw = item.json.response || '';\n\nlet analysis;\ntry {\n  const match = raw.match(/\\{[\\s\\S]*\\}/);\n  analysis = JSON.parse(match ? match[0] : raw);\n} catch {\n  return [{ json: { ...item.json._input, _skip: true, _motivo: 'JSON parse error' } }];\n}\n\nconst scoreMinimo = parseInt(process.env.SCORE_MINIMO || '6');\nconst skip = !analysis.confiable || analysis.score < scoreMinimo;\n\nreturn [{\n  json: {\n    titulo: item.json._input?.titulo,\n    url: item.json._input?.url,\n    fuente: item.json._input?.fuente,\n    categoria: analysis.categoria,\n    score: analysis.score,\n    resumen: analysis.resumen,\n    analisis: analysis.analisis,\n    confiable: analysis.confiable,\n    motivo_descarte: analysis.motivo_descarte,\n    _skip: skip\n  }\n}];"
+      },
+      "id": "parse-analysis",
+      "name": "Parsear Respuesta Gemma",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 460]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "skip-check",
+              "leftValue": "={{ $json._skip }}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "filter-approved",
+      "name": "¿Aprobada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 460]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.categoria }}",
+                    "rightValue": "IA",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "IA"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.categoria }}",
+                    "rightValue": "Tech",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Tech"
+            }
+          ]
+        }
+      },
+      "id": "switch-category",
+      "name": "Switch: IA vs Tech",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1600, 340]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst a = item.analisis;\n\nconst nivelEmoji = { alto: '⚡', medio: '📌', bajo: '💤' };\nconst nivelLabel = { alto: 'IMPORTANTE', medio: 'RELEVANTE', bajo: 'MENOR' };\n\nlet analisisBloque = '';\nif (a && a.por_que) {\n  analisisBloque = `\\n\\n🔍 *Análisis:*\\n${nivelEmoji[a.nivel] || '📌'} *${nivelLabel[a.nivel] || a.nivel}*\\n${a.por_que}${a.impacto ? '\\n_Impacto: ' + a.impacto + '_' : ''}`;\n}\n\nconst mensaje = `🤖 *[IA]* ${item.titulo}\\n\\n📰 Fuente: ${item.fuente}\\n⭐ Score: ${item.score}/10 ✅ Verificada\\n\\n📋 *Resumen:*\\n${item.resumen || 'Sin resumen disponible.'}${analisisBloque}\\n\\n🔗 ${item.url}`;\n\nreturn [{ json: { ...item, telegramMsg: mensaje } }];"
+      },
+      "id": "format-ia",
+      "name": "Formatear: IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst a = item.analisis;\n\nconst nivelEmoji = { alto: '⚡', medio: '📌', bajo: '💤' };\nconst nivelLabel = { alto: 'IMPORTANTE', medio: 'RELEVANTE', bajo: 'MENOR' };\n\nlet analisisBloque = '';\nif (a && a.por_que) {\n  analisisBloque = `\\n\\n🔍 *Análisis:*\\n${nivelEmoji[a.nivel] || '📌'} *${nivelLabel[a.nivel] || a.nivel}*\\n${a.por_que}${a.impacto ? '\\n_Impacto: ' + a.impacto + '_' : ''}`;\n}\n\nconst mensaje = `💻 *[Tech]* ${item.titulo}\\n\\n📰 Fuente: ${item.fuente}\\n⭐ Score: ${item.score}/10 ✅ Verificada\\n\\n📋 *Resumen:*\\n${item.resumen || 'Sin resumen disponible.'}${analisisBloque}\\n\\n🔗 ${item.url}`;\n\nreturn [{ json: { ...item, telegramMsg: mensaje } }];"
+      },
+      "id": "format-tech",
+      "name": "Formatear: Tech",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1820, 460]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CANAL_IA }}",
+        "text": "={{ $json.telegramMsg }}",
+        "additionalFields": { "parse_mode": "Markdown", "disable_web_page_preview": false }
+      },
+      "id": "telegram-ia",
+      "name": "Telegram: Canal IA",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2040, 120],
+      "credentials": { "telegramApi": { "id": "telegram-cred", "name": "Telegram Bot" } }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CANAL_TECH }}",
+        "text": "={{ $json.telegramMsg }}",
+        "additionalFields": { "parse_mode": "Markdown", "disable_web_page_preview": false }
+      },
+      "id": "telegram-tech",
+      "name": "Telegram: Canal Tech",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2040, 380],
+      "credentials": { "telegramApi": { "id": "telegram-cred", "name": "Telegram Bot" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/api/news",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-api-secret", "value": "={{ $env.API_SECRET }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { titulo: $json.titulo, url: $json.url, fuente: $json.fuente, categoria: $json.categoria, score: $json.score, resumen: $json.resumen, analisis: $json.analisis, fecha: new Date().toISOString() } }}",
+        "options": { "ignoreResponseCode": true }
+      },
+      "id": "publish-web-ia",
+      "name": "Publicar Web: IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2040, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/api/news",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-api-secret", "value": "={{ $env.API_SECRET }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { titulo: $json.titulo, url: $json.url, fuente: $json.fuente, categoria: $json.categoria, score: $json.score, resumen: $json.resumen, analisis: $json.analisis, fecha: new Date().toISOString() } }}",
+        "options": { "ignoreResponseCode": true }
+      },
+      "id": "publish-web-tech",
+      "name": "Publicar Web: Tech",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2040, 540]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[
+        { "node": "RSS: AI News", "type": "main", "index": 0 },
+        { "node": "RSS: VentureBeat AI", "type": "main", "index": 0 },
+        { "node": "RSS: OpenAI Blog", "type": "main", "index": 0 },
+        { "node": "RSS: Ars Technica", "type": "main", "index": 0 },
+        { "node": "RSS: Hacker News", "type": "main", "index": 0 },
+        { "node": "RSS: TechCrunch", "type": "main", "index": 0 },
+        { "node": "RSS: The Verge", "type": "main", "index": 0 }
+      ]]
+    },
+    "RSS: AI News":       { "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 0 }]] },
+    "RSS: VentureBeat AI":{ "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 1 }]] },
+    "RSS: OpenAI Blog":   { "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 2 }]] },
+    "RSS: Ars Technica":  { "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 3 }]] },
+    "RSS: Hacker News":   { "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 4 }]] },
+    "RSS: TechCrunch":    { "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 5 }]] },
+    "RSS: The Verge":     { "main": [[{ "node": "Merge All Feeds", "type": "main", "index": 6 }]] },
+    "Merge All Feeds":    { "main": [[{ "node": "Deduplicate & Limit", "type": "main", "index": 0 }]] },
+    "Deduplicate & Limit":{ "main": [[{ "node": "Gemma: Analizar Noticia", "type": "main", "index": 0 }]] },
+    "Gemma: Analizar Noticia": { "main": [[{ "node": "Parsear Respuesta Gemma", "type": "main", "index": 0 }]] },
+    "Parsear Respuesta Gemma": { "main": [[{ "node": "¿Aprobada?", "type": "main", "index": 0 }]] },
+    "¿Aprobada?": {
+      "main": [
+        [{ "node": "Switch: IA vs Tech", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Switch: IA vs Tech": {
+      "main": [
+        [{ "node": "Formatear: IA",   "type": "main", "index": 0 }],
+        [{ "node": "Formatear: Tech", "type": "main", "index": 0 }]
+      ]
+    },
+    "Formatear: IA": {
+      "main": [[
+        { "node": "Telegram: Canal IA",  "type": "main", "index": 0 },
+        { "node": "Publicar Web: IA",    "type": "main", "index": 0 }
+      ]]
+    },
+    "Formatear: Tech": {
+      "main": [[
+        { "node": "Telegram: Canal Tech", "type": "main", "index": 0 },
+        { "node": "Publicar Web: Tech",   "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["news", "ai", "tech", "gemma"],
+  "meta": { "templateCredsSetupCompleted": false }
+}
